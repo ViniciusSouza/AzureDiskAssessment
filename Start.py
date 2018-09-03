@@ -1,0 +1,35 @@
+#-------------------------------------------------------------------------
+#
+# Copyright (c) Microsoft Corporation. All rights reserved.
+#
+# THIS CODE AND INFORMATION ARE PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, 
+# EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES 
+# OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
+#---------------------------------------------------------------------------
+
+import config, sys, json
+import azure.common
+from azure.storage import CloudStorageAccount
+from Tables import table_json
+
+print('Processing Json')
+
+if len(sys.argv) <= 2:
+    print('Please provide the json file for the Vms and Disks')
+    print('az vm list > vm.json')
+    print('az disk list > disk.json')
+    print('./Start.py vm.json disk.json')
+    exit(-1)
+else:
+    jsonvm = sys.argv[1]
+    jsondisk = sys.argv[2]
+
+if config.IS_EMULATED:
+    account = CloudStorageAccount(is_emulated=True)
+else:
+    account_name = config.STORAGE_ACCOUNT_NAME
+    account_key = config.STORAGE_ACCOUNT_KEY
+    account = CloudStorageAccount(account_name, account_key)
+
+vmdisk_table = table_json(str(jsonvm),str(jsondisk) )
+vmdisk_table.vmdisks(account)
