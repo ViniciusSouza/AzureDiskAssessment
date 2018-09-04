@@ -13,19 +13,6 @@ from azure.storage import CloudStorageAccount
 from Tables import table_json
 import subprocess
 
-
-print('Processing Json')
-
-#if len(sys.argv) <= 2:
-#    print('Please provide the json file for the Vms and Disks')
-#    print('az vm list > vm.json')
-#    print('az disk list > disk.json')
-#    print('./Start.py vm.json disk.json')
-#    exit(-1)
-#else:
-#    jsonvm = sys.argv[1]
-#    jsondisk = sys.argv[2]
-
 if config.IS_EMULATED:
     account = CloudStorageAccount(is_emulated=True)
 else:

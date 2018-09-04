@@ -14,30 +14,8 @@ Azure Cli 2.0
 
 ## Usage
 
-1) Login to your Azure Subscription
+1) Execute the script
 
 ```{r, engine='sh', count_lines}
-az login
-```
-
-2) List the VMs and save it to a json file
-
-```{r, engine='sh', count_lines}
-az vm list > vm.json
-```
-
-3) List the Managed Disks in your subscription
-
-```{r, engine='sh', count_lines}
-az disk list > disk.json
-```
-
-4) Change the setting at Config.py
-
-Using your favorite editor set the values to connect to the desire Storage Account.
-
-5) Execute the script
-
-```{r, engine='sh', count_lines}
-./Start.py vm.json disk.json
+./Start.py
 ```
