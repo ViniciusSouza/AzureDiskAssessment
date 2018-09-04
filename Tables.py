@@ -14,9 +14,9 @@ from azure.storage.table import TableService, Entity
 
 class table_json():
 
-    def __init__(self, strJsonVM, strJsonDisk):
-        self.strJsonVM = strJsonVM
-        self.strJsonDisk = strJsonDisk
+    def __init__(self, jsonVM, jsonDisk):
+        self.JsonVM = jsonVM
+        self.JsonDisk = jsonDisk
 
     def vmdisks(self, account):
         print('Processing VM List Json ')
@@ -33,8 +33,9 @@ class table_json():
                 print('Create a table with name - ' + table_name + ' - already exists')
             
 
-            vms = json.load(io.open(self.strJsonVM))
-            disks = json.load(io.open(self.strJsonDisk))
+            vms = self.JsonVM
+            disks = self.JsonDisk
+            disktree_obj = objectpath.Tree(disks)
 
             execution_date = datetime.now().strftime("%Y-%m-%d-%H-%M")
 
@@ -55,21 +56,26 @@ class table_json():
                 if not vm["storageProfile"]["osDisk"]["diskSizeGb"] is None:
                     vm_running = True
 
-                disktree_obj = objectpath.Tree(disks)                
-                osDisks = disktree_obj.execute('$.*[lower(@.id) is lower("'+vm["storageProfile"]["osDisk"]["managedDisk"]["id"]+'")]')
-                
-                for osDisk in osDisks:
-                    self.osDisk = osDisk
-
                 registry["vm_running"] = str(vm_running)
                 registry['host_name'] = vm["osProfile"]["computerName"]
                 registry['ostype'] = vm["storageProfile"]["osDisk"]["osType"]
-                registry['osDisk_id'] = vm["storageProfile"]["osDisk"]["managedDisk"]["id"]
                 registry['osDisk_name'] = vm["storageProfile"]["osDisk"]["name"]
-                registry['osDisk_disk_type'] = self.osDisk["sku"]["name"]
-                registry['osDisk_size_allocated'] = self.osDisk["diskSizeGb"]
-                registry["osDisk_size_tier"] = self.tierStorageSize(self.osDisk["sku"]["name"], self.osDisk["diskSizeGb"])
-                registry["osDisk_offer_name"] = self.tierStorageOffer(self.osDisk["sku"]["name"], self.osDisk["diskSizeGb"])
+
+                if not vm["storageProfile"]["osDisk"]["managedDisk"] is None:
+                    osDisks = disktree_obj.execute('$.*[lower(@.id) is lower("'+vm["storageProfile"]["osDisk"]["managedDisk"]["id"]+'")]')
+                    registry['osDisk_id'] = vm["storageProfile"]["osDisk"]["managedDisk"]["id"]
+                    
+                    for osDisk in osDisks:
+                        self.osDisk = osDisk
+
+                    registry['osDisk_disk_type'] = self.osDisk["sku"]["name"]
+                    registry['osDisk_size_allocated'] = self.osDisk["diskSizeGb"]
+                    registry["osDisk_size_tier"] = self.tierStorageSize(self.osDisk["sku"]["name"], self.osDisk["diskSizeGb"])
+                    registry["osDisk_offer_name"] = self.tierStorageOffer(self.osDisk["sku"]["name"], self.osDisk["diskSizeGb"])
+                else:
+                    registry['osDisk_disk_type'] = "Unmanaged"
+                    registry['osDisk_size_allocated'] = vm["storageProfile"]["osDisk"]["diskSizeGb"]
+                    registry["osDisk_vhd"] = vm["storageProfile"]["osDisk"]["vhd"]["uri"]
 
                 i = 0
                 for datadisk in vm["storageProfile"]["dataDisks"]:
