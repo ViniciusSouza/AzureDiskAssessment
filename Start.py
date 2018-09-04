@@ -11,18 +11,20 @@ import config, sys, json
 import azure.common
 from azure.storage import CloudStorageAccount
 from Tables import table_json
+import subprocess
+
 
 print('Processing Json')
 
-if len(sys.argv) <= 2:
-    print('Please provide the json file for the Vms and Disks')
-    print('az vm list > vm.json')
-    print('az disk list > disk.json')
-    print('./Start.py vm.json disk.json')
-    exit(-1)
-else:
-    jsonvm = sys.argv[1]
-    jsondisk = sys.argv[2]
+#if len(sys.argv) <= 2:
+#    print('Please provide the json file for the Vms and Disks')
+#    print('az vm list > vm.json')
+#    print('az disk list > disk.json')
+#    print('./Start.py vm.json disk.json')
+#    exit(-1)
+#else:
+#    jsonvm = sys.argv[1]
+#    jsondisk = sys.argv[2]
 
 if config.IS_EMULATED:
     account = CloudStorageAccount(is_emulated=True)
@@ -31,5 +33,17 @@ else:
     account_key = config.STORAGE_ACCOUNT_KEY
     account = CloudStorageAccount(account_name, account_key)
 
-vmdisk_table = table_json(str(jsonvm),str(jsondisk) )
-vmdisk_table.vmdisks(account)
+
+subsJson = subprocess.check_output("az account list", stderr=subprocess.STDOUT, shell=True)
+if str(subsJson).__contains__("login"):
+    subprocess.call(["az","login"])
+
+for sub in json.loads(subsJson):
+    print("subscription id: " + sub["id"])
+
+    subprocess.check_output("az account set -s " + sub["id"], stderr=subprocess.STDOUT, shell=True)
+
+    jsonvm = subprocess.check_output("az vm list", stderr=subprocess.STDOUT, shell=True)
+    jsondisk = subprocess.check_output("az disk list", stderr=subprocess.STDOUT, shell=True)
+    vmdisk_table = table_json(json.loads(jsonvm),json.loads(jsondisk) )
+    vmdisk_table.vmdisks(account)
