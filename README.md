@@ -7,6 +7,11 @@ Usually the usage of Azure Managed Disks can generate extra costs if some aspect
 
 In order to help you answer this question I made this python script that will generate a report to a Azure Table Storage, this table can be used to provide more information to your montoring tool.
 
+## Solution
+
+There are two implementation using [Python]("./python/Readme.md") and [Powershell]("./PS/Readme.md"), choose the one that fits your need.
+
+
 ## Prerequisites
 
 [Python 3.6](https://www.python.org/downloads/)
