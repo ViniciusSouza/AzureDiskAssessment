@@ -95,7 +95,7 @@ class table_json():
                     registry["datadisk"+str(i)+"_name"] = datadisk["name"]
                     registry["datadisk"+str(i)+"_type"] = data_disk_type
                     registry["datadisk"+str(i)+"_size_allocated"] = self.vmDataDisk["diskSizeGb"]
-                    registry["datadisk"+str(i)+"size_tier"] = self.tierStorageSize(data_disk_type,self.vmDataDisk["diskSizeGb"])
+                    registry["datadisk"+str(i)+"_size_tier"] = self.tierStorageSize(data_disk_type,self.vmDataDisk["diskSizeGb"])
                     registry["datadisk"+str(i)+"_offer_name"] = self.tierStorageOffer(data_disk_type,self.vmDataDisk["diskSizeGb"])
                     registry["datadisk"+str(i)+"_vhd"] = datadisk["vhd"]
                     i = i + 1
@@ -134,99 +134,46 @@ class table_json():
             print('Error occurred.', e)
 
     def tierStorageSize(self, storageTier, size):
-        if "Premium" in str(storageTier):
+        if "Premium" in str(storageTier) or "Standard_HDD" in str(storageTier):
             if size <= 32:
                 return 32
             if size <= 64:
                 return 64
-            if size <= 128:
-                return 128
-            if size <= 256:
-                return 256
-            if size <= 512:
-                return 512
-            if size <= 1024:
-                return 1024
-            if size <= 2048:
-                return 2048
-            if size <= 4096:
-                return 4096
-        elif "Standard_HDD" in str(storageTier):
-            if size <= 32:
-                return 32
-            if size <= 64:
-                return 63
-            if size <= 128:
-                return 128
-            if size <= 256:
-                return 256
-            if size <= 512:
-                return 512
-            if size <= 1024:
-                return 1024
-            if size <= 2048:
-                return 2048
-            if size <= 4096:
-                return 4096
-        elif "Standard" in str(storageTier):
-            if size <= 128:
-                return 128
-            if size <= 256:
-                return 256
-            if size <= 512:
-                return 512
-            if size <= 1024:
-                return 1024
-            if size <= 2048:
-                return 2048
-            if size <= 4096:
-                return 4096
+        if size <= 128:
+            return 128
+        if size <= 256:
+            return 256
+        if size <= 512:
+            return 512
+        if size <= 1024:
+            return 1024
+        if size <= 2048:
+            return 2048
+        if size <= 4096:
+            return 4096
 
     def tierStorageOffer(self, storageTier, size):
+        offer = ""
         if "Premium" in str(storageTier):
-            if size <= 32:
-                return "P4"
-            if size <= 64:
-                return "P6"
-            if size <= 128:
-                return "P10"
-            if size <= 256:
-                return "P15"
-            if size <= 512:
-                return "P20"
-            if size <= 1024:
-                return "P30"
-            if size <= 2048:
-                return "P40"
-            if size <= 4096:
-                return "P50"
+            offer = "P"
         elif "Standard_HDD" in str(storageTier):
-            if size <= 32:
-                return "S4"
-            if size <= 64:
-                return "S6"
-            if size <= 128:
-                return "S10"
-            if size <= 256:
-                return "S15"
-            if size <= 512:
-                return "S20"
-            if size <= 1024:
-                return "S30"
-            if size <= 2048:
-                return "S40"
-            if size <= 4096:
-                return "S50"
-        elif "Standard" in str(storageTier):
-            if size <= 128:
-                return "E10"
-            if size <= 256:
-                return "E15"
-            if size <= 512:
-                return "E20"
-            if size <= 1024:
-                return "E30"
-            if size <= 2048:
-                return "E40"
-            if size <= 4096:
-                return "E50"
+            offer = "S"
+        else:
+            offer = "E"
+
+        if size <= 32:
+            return offer + "4"
+        if size <= 64:
+            return offer + "6"
+        if size <= 128:
+            return offer + "10"
+        if size <= 256:
+            return offer + "15"
+        if size <= 512:
+            return offer + "20"
+        if size <= 1024:
+            return offer + "30"
+        if size <= 2048:
+            return offer + "40"
+        if size <= 4096:
+            return offer + "50"
