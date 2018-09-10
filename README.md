@@ -9,4 +9,4 @@ In order to help you answer this question I made this python script that will ge
 
 ## Solution
 
-There are two implementation using [Python]("./python/Readme.md") and [Powershell]("./PS/Readme.md"), choose the one that fits your need.
+There are two implementation using [Python](./python/Readme.md) and [Powershell](./PS/Readme.md), choose the one that fits your need.
