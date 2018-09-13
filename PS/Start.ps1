@@ -8,6 +8,8 @@
 #---------------------------------------------------------------------------
 
 param (
+    [string]$TargetSubscriptionName,
+    [string]$TargetResourceGroup,
     [Parameter(Mandatory=$true)][string]$ReportAzureSubscriptionName,
     [Parameter(Mandatory=$true)][string]$ReportAzureStorageResourceGroup,
     [Parameter(Mandatory=$true)][string]$ReportAzureStorageName
@@ -92,13 +94,12 @@ function tierStorageOffer {
     }   
 }
 
+Write-Host "Warning: This script may change the active subscription for your context" -ForegroundColor Yellow
 
 $azureContext = Get-AzureRmContext
 if ($azureContext){
     $TenantId = $azureContext.Tenant.TenantId
-
     if ($azureContext.Subscription.Name -ne $ReportAzureSubscriptionName){
-        Write-Host "Warning: Your context is set to a different subscription, this script will change to the provided subscription." -ForegroundColor Yellow
         Select-AzureRmSubscription -Subscription $ReportAzureSubscriptionName
     }
 
@@ -108,8 +109,6 @@ if ($azureContext){
 }
 
 $tableName = "vmdisks"
-
-
 
 $storageccount = Get-AzureRmStorageAccount -ResourceGroupName $ReportAzureStorageResourceGroup -Name $ReportAzureStorageName 
 if (-not $storageccount){
@@ -128,18 +127,35 @@ if ($ev) {
 
 Write-Host "Report table:" $table.Uri -ForegroundColor Green
  
-$subs = Get-AzurermSubscription -TenantId $TenantId
+$subs = Get-AzurermSubscription -TenantId $TenantId -SubscriptionName $TargetSubscriptionName
 
+if (-not $subs){
+    Write-Host "Error: No subscription available, please check the parameters values" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "Working... this can take a while" -ForegroundColor Green
 foreach($sub in $subs){
     Select-AzureRmSubscription -Subscription $sub.Id
 
     Write-Host "Listing VMs for " $sub.Name -ForegroundColor Green
 
-    $execution_date = Get-Date -UFormat "%Y-%m-%d-%H-%M"
-    
-    $vms = Get-AzureRmVM 
     $disks = @{}
-    Get-AzureRmDisk | foreach { $disks.Add($_.Id, ($_ | ConvertTo-Json))}
+
+    if ($TargetResourceGroup){
+        $resourceGroup =  Get-AzureRmResourceGroup -Name $TargetResourceGroup
+        if (-not $resourceGroup){
+            Write-Host  $TargetResourceGroup " not available at Subscription " $sub.Name -ForegroundColor Yellow
+            continue
+        }
+        $vms = Get-AzureRmVM -ResourceGroupName $TargetResourceGroup
+        Get-AzureRmDisk -ResourceGroupName  $TargetResourceGroup | foreach { $disks.Add($_.Id, ($_ | ConvertTo-Json))}
+    }else{
+        $vms = Get-AzureRmVM
+        Get-AzureRmDisk | foreach { $disks.Add($_.Id, ($_ | ConvertTo-Json))}
+    }
+
+    $execution_date = Get-Date -UFormat "%Y-%m-%d-%H-%M"
 
     #$disksHas = ToHastable $disks
 
@@ -156,8 +172,28 @@ foreach($sub in $subs){
         $property.Add("location",$vm.Location)
         $property.Add("vmtype",$vm.HardwareProfile.VmSize.ToString())
 
+        $windowsVmDisks = @{}
+        $linuxVmDisks = @{}
         if ($vm.StorageProfile.OsDisk.DiskSizeGB){
             $isRunnning = $true
+            
+            Write-Host "Getting information disks information form the VM" -ForegroundColor Green
+            if ($vm.StorageProfile.OsDisk.OsType.ToString() -eq 'Windows'){
+                $result = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunPowerShellScript' -ScriptPath "DisksInfo.ps1"
+                if ($result.Status -eq "Succeeded"){
+                    #$resultstr = $result.Value[0].Message.Replace("\n","")
+                    #$resultstr = $resultstr.Replace("0}",'"0"}')
+                    #$windowsVmDisks = $resultstr | ConvertFrom-Json
+                    $windowsVmDisks = $result.Value[0].Message | ConvertFrom-String
+                }
+            }
+            # elseif ($vm.StorageProfile.OsDisk.OsType.ToString() -eq 'Linux'){
+            #     $result = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunShellScript' -ScriptPath "DisksInfo.sh"
+            #     if ($result.Status -eq "Succeeded"){
+            #         $resultstr = $result.Value[0].Message.Replace("Enable succeeded:","").Replace("[stdout]","").Replace("[stderr]","")
+            #         $linuxVmDisks = $resultstr | ConvertFrom-Json 
+            #     }
+            # }
         }
         $property.Add("vm_running",$isRunnning)
         $property.Add("host_name",$vm.OSProfile.ComputerName)
@@ -194,7 +230,7 @@ foreach($sub in $subs){
             if ($disk.Sku){
                 $data_disk_type = $disk.Sku.Tier
             }
-            
+
             $property.Add("datadisk"+$i+"_lun",$dataDisk.Lun)
             $property.Add("datadisk"+$i+"_id",$disk.Id)
             $property.Add("datadisk"+$i+"_name",$disk.Name)

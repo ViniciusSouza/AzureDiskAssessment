@@ -9,7 +9,7 @@
             "request": "launch",
             "name": "PowerShell Launch Current File",
             "script": "${file}",
-            "args": [],
+            "args": ["-TargetSubscriptionName 'CSE Brazil'","-TargetResourceGroup Carlsberg","-ReportAzureSubscriptionName 'CSE Brazil'","-ReportAzureStorageResourceGroup HaraRG1","-ReportAzureStorageName hararg1log"],
             "cwd": "${file}"
         },
         {
