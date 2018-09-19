@@ -7,9 +7,17 @@
         {
             "type": "PowerShell",
             "request": "launch",
-            "name": "PowerShell Launch Current File",
+            "name": "PowerShell Launch Current File for One RG",
             "script": "${file}",
-            "args": [],
+            "args": ["-TargetSubscriptionName 'CSE Brazil'","-TargetResourceGroup Carlsberg","-ReportAzureSubscriptionName 'CSE Brazil'","-ReportAzureStorageResourceGroup Carlsberg","-ReportAzureStorageName reportdisk"],
+            "cwd": "${file}"
+        },
+        {
+            "type": "PowerShell",
+            "request": "launch",
+            "name": "PowerShell Launch Current File all Subs and RG",
+            "script": "${file}",
+            "args": ["-ReportAzureSubscriptionName 'CSE Brazil'","-ReportAzureStorageResourceGroup Carlsberg","-ReportAzureStorageName reportdisk"],
             "cwd": "${file}"
         },
         {

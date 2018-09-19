@@ -1,0 +1,2 @@
+#!/bin/bash
+lsblk -J -S; echo "---";  df --output=source,fstype,size,used,avail,pcent,target -x tmpfs -x devtmpfsH | awk '/^\// {print $1"\t"$2"\t"$3"\t"$4"\t"$5"\t"$6}' | python -c 'import json, fileinput; print json.dumps({"diskarray":[dict(zip(("source", "filesystem" , "spacetotal", "spaceused", "spaceavail", "percentage"), l.split())) for l in fileinput.input()]}, indent=2)'
