@@ -94,8 +94,7 @@ param (
     [System.Object] WindowsCmdReturnToJson([string]$str){
         if ($str -ne ""){
             $str = $str.Replace("\n","")
-            $str = $str.Replace('0}','"0"},')
-            $str = $str.Substring(0, $str.Length-1)
+            $str = $str.Replace('}{','},{')
             $str = '[' + $str + ']'
             return ($str | ConvertFrom-Json)
         }
