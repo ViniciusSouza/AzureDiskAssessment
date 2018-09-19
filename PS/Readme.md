@@ -18,7 +18,7 @@ Azure Table Module
 
 By running the command you can provide.
 
-* TargetSubscriptionName            - Not mandatory, if empty go trhu all the subscriptions
+* TargetSubscriptionName            - Not mandatory, if empty go thru all the subscriptions
 * TargetResourceGroup               - Not Mandatory, if empty go thru all the resourcesgroups  
 * ReportAzureSubscriptionName       - Mandatory, Subscription name for the report
 * ReportAzureStorageResourceGroup   - Mandatory, ResourceGroup name for the report
