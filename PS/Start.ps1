@@ -122,7 +122,7 @@ param (
                 if ($usagedisk.source.IndexOf($disk.name) -ne -1){
                     $disk.size += $usagedisk.spacetotal
                     $disk.free +=  $usagedisk.spaceavail
-                    $disk.used += ($usagedisk.spacetotal - $usagedisk.spaceavail)
+                    $disk.used += ($usagedisk.spaceused)
                     $disk.volume.Add($usagedisk)
                 }
             }
@@ -217,8 +217,9 @@ param (
                 $VmDisk["OSDiskRawSize"] = ($OSVolume.spacetotal/1MB)
                 $VmDisk["OSDiskDriveLetter"] = $OSVolume.source
                 $VmDisk["OSDiskVolumeName"] = $OSVolume.source
-                $VmDisk["OSDiskSize"] = ($OSVolume.spacetotal - $OSVolume.spaceavail)/1MB
-                $VmDisk["OSDiskFreeSpace"] = ($OSVolume.spaceavail/1MB)
+                $VmDisk["OSDiskVolumeSize"] = ($OSVolume.spacetotal)/1MB
+                $VmDisk["OSDiskVolumeFreeSpace"] = ($OSVolume.spaceavail/1MB)
+                $VmDisk["OSDiskVolumeUsed"] = ($OSVolume.spaceused/1MB)
             }
         }else{
             $VmDisk["OSDiskID"] = $OSCorrelateDisk.Disk
@@ -229,8 +230,9 @@ param (
             $VmDisk["OSDiskRawSize"] = $OSCorrelateDisk.RawSize
             $VmDisk["OSDiskDriveLetter"] = $OSCorrelateDisk.DriveLetter
             $VmDisk["OSDiskVolumeName"] = $OSCorrelateDisk.VolumeName
-            $VmDisk["OSDiskSize"] = $OSCorrelateDisk.Size
-            $VmDisk["OSDiskFreeSpace"] = $OSCorrelateDisk.FreeSpace
+            $VmDisk["OSDiskVolumeSize"] = $OSCorrelateDisk.Size
+            $VmDisk["OSDiskVolumeFreeSpace"] = $OSCorrelateDisk.FreeSpace
+            $VmDisk["OSDiskVolumeUsed"] = $OSCorrelateDisk.VolumeUsed
         }
 
         return $VmDisk
@@ -447,10 +449,10 @@ param (
                             $property.Add($prefix+"_size",$vmdatadisk["OSDiskDiskSize"])
                             $property.Add($prefix+"_partition",$vmdatadisk["OSDiskPartition"])
                             $property.Add($prefix+"_lun",$vmdatadisk["OSDiskLun"])
-                            $property.Add($prefix+"_rawsize",$vmdatadisk["OSDiskRawSize"])
-                            $property.Add($prefix+"_volumename",$vmdatadisk["OSDiskVolumeName"])
-                            $property.Add($prefix+"_disksize",$vmdatadisk["OSDiskSize"])
-                            $property.Add($prefix+"_freespace",$vmdatadisk["OSDiskFreeSpace"])
+                            $property.Add($prefix+"_partition_size",$vmdatadisk["OSDiskRawSize"])
+                            $property.Add($prefix+"_volume_name",$vmdatadisk["OSDiskVolumeName"])
+                            $property.Add($prefix+"_volume_size",$vmdatadisk["OSDiskVolumeSize"])
+                            $property.Add($prefix+"_volume_freespace",$vmdatadisk["OSDiskVolumeFreeSpace"])
                             $vol = $vol + 1
                         }
                     }
@@ -486,12 +488,12 @@ param (
                     if ($disksList -and $disksList.Count -gt 0){
                         if ($linuxVmDisks) { 
                             #If Linux
-                            $property.Add("datadisk"+$i+"_OsDiskSize",$disksList[0]["OSDiskDiskSize"])
+                            $property.Add("datadisk"+$i+"_OSDiskSize",$disksList[0]["OSDiskDiskSize"])
                             $property.Add("datadisk"+$i+"_OsDiskFree",$disksList[0]["OSDiskDiskFree"])
                             $property.Add("datadisk"+$i+"_OsDiskUsed",$disksList[0]["OSDiskDiskUsed"])
                         }else{
                             #if Windows
-                            $property.Add("datadisk"+$i+"_OsDiskSize",$disksList[0]["OSDiskDiskSize"])
+                            $property.Add("datadisk"+$i+"_OSDiskSize",$disksList[0]["OSDiskDiskSize"])
                         }
                     }
 
@@ -501,10 +503,12 @@ param (
                         $property.Add($prefix+"_driveletter",$vmdatadisk["OSDiskDriveLetter"])
                         $property.Add($prefix+"_partition",$vmdatadisk["OSDiskPartition"])
                         $property.Add($prefix+"_lun",$vmdatadisk["OSDiskLun"])
-                        $property.Add($prefix+"_volumesize",$vmdatadisk["OSDiskRawSize"])
-                        $property.Add($prefix+"_volumeName",$vmdatadisk["OSDiskVolumeName"])
-                        $property.Add($prefix+"_freeSpace",$vmdatadisk["OSDiskFreeSpace"])
-                        $property.Add($prefix+"_usedSpace",$vmdatadisk["OSDiskRawSize"] - $vmdatadisk["OSDiskFreeSpace"])
+                        $property.Add($prefix+"_partition_size",$vmdatadisk["OSDiskRawSize"])
+                        $property.Add($prefix+"_volume_name",$vmdatadisk["OSDiskVolumeName"])
+                        $property.Add($prefix+"_volume_freeSpace",$vmdatadisk["OSDiskVolumeFreeSpace"])
+                        $property.Add($prefix+"_volume_usedSpace",$vmdatadisk["OSDiskVolumeUsed"])
+                        $property.Add($prefix+"_volume_size",$vmdatadisk["OSDiskVolumeSize"])
+
                         $vol = $vol + 1
                     }
         

@@ -9,7 +9,7 @@ Get-WmiObject Win32_DiskDrive | % {
     $drives = "ASSOCIATORS OF " +
               "{Win32_DiskPartition.DeviceID='$($partition.DeviceID)'} " +
               "WHERE AssocClass = Win32_LogicalDiskToPartition"
-
+   
     Get-WmiObject -Query $drives | % {
       New-Object -Type PSCustomObject -Property @{
         Disk        = $disk.DeviceID
@@ -22,6 +22,7 @@ Get-WmiObject Win32_DiskDrive | % {
         VolumeName  = $_.VolumeName
         Size        = "{0:N2}" -f ($_.Size/1GB)
         FreeSpace   = "{0:N2}" -f ($_.FreeSpace/1GB)
+        VolumeUsed  = "{0:N2}" -f (($_.Size/1GB)- ($_.FreeSpace/1GB))
       } | ConvertTo-Json
     }
   }
