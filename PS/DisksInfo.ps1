@@ -1,3 +1,4 @@
+$returnVolumes = New-Object System.Collections.ArrayList($null) 
 Get-WmiObject Win32_DiskDrive | % {
   $disk = $_
   $partitions = "ASSOCIATORS OF " +
@@ -9,9 +10,10 @@ Get-WmiObject Win32_DiskDrive | % {
     $drives = "ASSOCIATORS OF " +
               "{Win32_DiskPartition.DeviceID='$($partition.DeviceID)'} " +
               "WHERE AssocClass = Win32_LogicalDiskToPartition"
-   
+    
+
     Get-WmiObject -Query $drives | % {
-      New-Object -Type PSCustomObject -Property @{
+      $returnVolumes.Add( (New-Object -Type PSCustomObject -Property @{
         Disk        = $disk.DeviceID
         Lun         = $disk.SCSILogicalUnit
         DiskSize    = "{0:N2}" -f ($disk.Size/1GB)
@@ -23,7 +25,8 @@ Get-WmiObject Win32_DiskDrive | % {
         Size        = "{0:N2}" -f ($_.Size/1GB)
         FreeSpace   = "{0:N2}" -f ($_.FreeSpace/1GB)
         VolumeUsed  = "{0:N2}" -f (($_.Size/1GB)- ($_.FreeSpace/1GB))
-      } | ConvertTo-Json
+      })) 
     }
   }
 }
+$returnVolumes | ConvertTo-Json

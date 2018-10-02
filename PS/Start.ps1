@@ -92,10 +92,9 @@ param (
     }
 
     [System.Object] WindowsCmdReturnToJson([string]$str){
-        if ($str -ne ""){
-            $str = $str.Replace("\n","")
-            $str = $str.Replace('}{','},{')
-            $str = '[' + $str + ']'
+        if ($str -ne "" -and $str.Length -gt 6){
+            $str = $str.Remove(0, $str.IndexOf("[")-1)
+            $str = $str.Trim()
             return ($str | ConvertFrom-Json)
         }
         return ("{}" | ConvertFrom-Json)
@@ -406,19 +405,36 @@ param (
                 if ($vm.StorageProfile.OsDisk.DiskSizeGB){
                     $isRunnning = $true
                     
-                    Write-Host "Getting information disks information form the VM" -ForegroundColor Green
-                    if ($vm.StorageProfile.OsDisk.OsType.ToString() -eq 'Windows'){
-                        $result = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunPowerShellScript' -ScriptPath "DisksInfo.ps1"
-                        if ($result.Status -eq "Succeeded"){
-                            $windowsVmDisks = $this.WindowsCmdReturnToJson($result.Value[0].Message)
+                    $result = $null
+                    $evt = $null
+                    $retry=1
+                    while(-not $result -or -not $result.Status -eq "Succeeded"){
+
+                        Write-Host "Try " $retry ": Getting information disks information form the VM" -ForegroundColor Green
+                        if ($vm.StorageProfile.OsDisk.OsType.ToString() -eq 'Windows'){
+                            $result = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunPowerShellScript' -ScriptPath "DisksInfo.ps1" -ErrorVariable evt -ErrorAction SilentlyContinue
+                            if ($result.Status -eq "Succeeded"){
+                                $windowsVmDisks = $this.WindowsCmdReturnToJson($result.Value[0].Message)
+                            }
                         }
+                        elseif ($vm.StorageProfile.OsDisk.OsType.ToString() -eq 'Linux'){
+                            $result = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunShellScript' -ScriptPath "DisksInfo.sh" -ErrorVariable evt -ErrorAction SilentlyContinue
+                            if ($result.Status -eq "Succeeded"){
+                                $linuxVmDisks = $this.LinuxCmdReturnToJson($result.Value[0].Message) 
+                            }
+                        }
+
+                        if ($evt){
+                            Start-Sleep -s 15
+                            if($retry -gt 3){
+                                Write-Host "Error Trying go get disk information for VM " $vm.Name ", please check if there is something wrong with this particular VM" -ForegroundColor Red 
+                                continue
+                            }
+                        }
+                        $retry = $retry + 1
                     }
-                     elseif ($vm.StorageProfile.OsDisk.OsType.ToString() -eq 'Linux'){
-                         $result = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunShellScript' -ScriptPath "DisksInfo.sh"
-                         if ($result.Status -eq "Succeeded"){
-                             $linuxVmDisks = $this.LinuxCmdReturnToJson($result.Value[0].Message) 
-                         }
-                    }
+
+                    
                 }
 
                 $property.Add("vm_running",$isRunnning)
