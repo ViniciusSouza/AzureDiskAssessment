@@ -46,7 +46,16 @@ param (
         }
         if ($size -le 4096){
             return 4096
-        }   
+        }
+        if ($size -le 8192){
+            return 8192
+        }
+        if ($size -le 16384){
+            return 16384
+        }  
+        if ($size -le 32768){
+            return 32768
+        } 
         
         return -1
     }
@@ -87,7 +96,16 @@ param (
         }
         if ($size -le 4096){
             return $offer+"50"
-        }   
+        } 
+        if ($size -le 8192){
+            return $offer+"60"
+        }
+        if ($size -le 16384){
+            return $offer+"70"
+        }  
+        if ($size -le 32768){
+            return $offer+"80"
+        } 
         return ""
     }
 
@@ -423,25 +441,35 @@ param (
                                 $linuxVmDisks = $this.LinuxCmdReturnToJson($result.Value[0].Message) 
                             }
                         }
-
-                        if ($result.Value[1] -and $result.Value[1].Message.Trim().Length -gt 0){
+                        
+                        if (-not $result){
                             $propertyError = @{}
-                            $propertyError.Add("Error",$result.Value[1].Message)
-                            Write-Host "A error was returned from the remote script" $vm.Name "this registry was saved to the vmdiskserror table" -ForegroundColor Red 
+                            $propertyError.Add("Error","Not able to run the remote script for the " + $vm.Name )
+                            Write-Host "Not able to run the remote script for the " $vm.Name " this registry was saved to the vmdiskserror table" -ForegroundColor Red 
                             $this.SaveToTable($tableError, $execution_date, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
-                        }
-
-                        if (-not $result -or -not $result.Status -eq "Succeeded"){
-                            $propertyError = @{}
-                            $propertyError.Add("Error",$result.Error.Message)
-
-                            #Log Error on vm disk error table
-                            $this.SaveToTable($tableError, $execution_date, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
-                            if($retry -gt 3){
-                                Write-Host "Error Trying go get disk information for VM " $vm.Name ", please check if there is something wrong with this particular VM. error: " $evt -ForegroundColor Red 
-                                break
+                        }else{
+                            if (-not $result.Status -eq "Succeeded"){
+                                $propertyError = @{}
+                                $propertyError.Add("Error",$result.Error.Message)
+    
+                                #Log Error on vm disk error table
+                                $this.SaveToTable($tableError, $execution_date, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
+                                if($retry -gt 3){
+                                    Write-Host "Error Trying go get disk information for VM " $vm.Name ", please check if there is something wrong with this particular VM. error: " $evt -ForegroundColor Red 
+                                    break
+                                }
+                            }else{
+                                if ($result.Value[1] -and $result.Value[1].Message.Trim().Length -gt 0){
+                                    $propertyError = @{}
+                                    $propertyError.Add("Error",$result.Value[1].Message)
+                                    Write-Host "A error was returned from the remote script" $vm.Name "this registry was saved to the vmdiskserror table" -ForegroundColor Red 
+                                    $this.SaveToTable($tableError, $execution_date, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
+                                }
                             }
+                            
                         }
+
+                        
                         $retry = $retry + 1
                     }
                 }
