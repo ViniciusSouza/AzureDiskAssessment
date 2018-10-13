@@ -46,7 +46,16 @@ param (
         }
         if ($size -le 4096){
             return 4096
-        }   
+        }
+        if ($size -le 8192){
+            return 8192
+        }
+        if ($size -le 16384){
+            return 16384
+        }  
+        if ($size -le 32768){
+            return 32768
+        } 
         
         return -1
     }
@@ -87,7 +96,16 @@ param (
         }
         if ($size -le 4096){
             return $offer+"50"
-        }   
+        } 
+        if ($size -le 8192){
+            return $offer+"60"
+        }
+        if ($size -le 16384){
+            return $offer+"70"
+        }  
+        if ($size -le 32768){
+            return $offer+"80"
+        } 
         return ""
     }
 
