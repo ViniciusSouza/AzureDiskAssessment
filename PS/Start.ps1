@@ -110,11 +110,16 @@ param (
     }
 
     [System.Object] WindowsCmdReturnToJson([string]$str){
-        if ($str -ne "" -and $str.Length -gt 6){
-            $str = $str.Remove(0, $str.IndexOf("[")-1)
-            $str = $str.Trim()
-            return ($str | ConvertFrom-Json)
+        try{
+            if ($str -ne "" -and $str.Length -gt 6){
+                $str = $str.Remove(0, $str.IndexOf("[")-1)
+                $str = $str.Trim()
+                return ($str | ConvertFrom-Json)
+            }
+        }Catch{
+            Write-Host "Error found to parse the windows disk information " $str -ForegroundColor Red 
         }
+
         return ("{}" | ConvertFrom-Json)
     }
     
@@ -122,28 +127,37 @@ param (
 
         $str = $str.Replace("Enable succeeded:","").Replace("[stdout]","").Replace("[stderr]","").Trim()
         $parts = $str.Split("---")
-        $usageJson = ($parts[3] | ConvertFrom-Json)
-        $disksJson = ($parts[0] | ConvertFrom-Json)
+        $disksJson = $null
 
-        foreach($disk in $disksJson.blockdevices){
+        Try
+        {
+            $usageJson = ($parts[3] | ConvertFrom-Json)
+            $disksJson = ($parts[0] | ConvertFrom-Json)
 
-            $hctlParts = $disk.hctl.Split(":")
+            foreach($disk in $disksJson.blockdevices){
 
-            $disk | Add-Member -Type NoteProperty -Name 'size' -Value 0
-            $disk | Add-Member -Type NoteProperty -Name 'used' -Value 0
-            $disk | Add-Member -Type NoteProperty -Name 'free' -Value 0
-            $disk | Add-Member -Type NoteProperty -Name 'lun' -Value $hctlParts[$hctlParts.Length-1]
-            $disk | Add-Member -Type NoteProperty -Name 'volume' -Value (New-Object System.Collections.ArrayList($null))
+                $hctlParts = $disk.hctl.Split(":")
 
-            foreach($usagedisk in $usageJson.diskarray){
-                if ($usagedisk.source.IndexOf($disk.name) -ne -1){
-                    $disk.size += $usagedisk.spacetotal
-                    $disk.free +=  $usagedisk.spaceavail
-                    $disk.used += ($usagedisk.spaceused)
-                    $disk.volume.Add($usagedisk)
+                $disk | Add-Member -Type NoteProperty -Name 'size' -Value 0
+                $disk | Add-Member -Type NoteProperty -Name 'used' -Value 0
+                $disk | Add-Member -Type NoteProperty -Name 'free' -Value 0
+                $disk | Add-Member -Type NoteProperty -Name 'lun' -Value $hctlParts[$hctlParts.Length-1]
+                $disk | Add-Member -Type NoteProperty -Name 'volume' -Value (New-Object System.Collections.ArrayList($null))
+
+                foreach($usagedisk in $usageJson.diskarray){
+                    if ($usagedisk.source.IndexOf($disk.name) -ne -1){
+                        $disk.size += $usagedisk.spacetotal
+                        $disk.free +=  $usagedisk.spaceavail
+                        $disk.used += ($usagedisk.spaceused)
+                        $disk.volume.Add($usagedisk)
+                    }
                 }
-            }
 
+            }
+        }
+        Catch
+        {
+            Write-Host "Error found to parse the linux disk information " $str -ForegroundColor Red 
         }
 
         return $disksJson

@@ -21,6 +21,14 @@
             "cwd": "${file}"
         },
         {
+            "type": "PowerShell",
+            "request": "launch",
+            "name": "PowerShell Launch Current File single",
+            "script": "${file}",
+            "args": ["-TargetSubscriptionName 'CSE Brazil'","-TargetResourceGroup  PIPEPPER-ITAU-UBUNTU","-ReportAzureSubscriptionName 'CSE Brazil'","-ReportAzureStorageResourceGroup Carlsberg","-ReportAzureStorageName reportdisk"],
+            "cwd": "${file}"
+        },
+        {
             "name": "Python: Current File",
             "type": "python",
             "request": "launch",
