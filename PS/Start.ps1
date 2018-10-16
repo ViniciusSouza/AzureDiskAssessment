@@ -117,9 +117,9 @@ param (
                 return ($str | ConvertFrom-Json)
             }
         }Catch{
-            Write-Host "Error found to parse the windows disk information " $str -ForegroundColor Red 
+            Write-Host "Error found to parse the windows disk information " $str -ForegroundColor Red
+            throw "Error found to parse the linux disk information " + $str 
         }
-
         return ("{}" | ConvertFrom-Json)
     }
     
@@ -158,6 +158,7 @@ param (
         Catch
         {
             Write-Host "Error found to parse the linux disk information " $str -ForegroundColor Red 
+            throw "Error found to parse the linux disk information " + $str
         }
 
         return $disksJson
@@ -442,47 +443,56 @@ param (
                     $evt = $null
                     $retry=1
                     while(-not $result -or -not $result.Status -eq "Succeeded"){
-                        Write-Host "Try " $retry ": Getting information disks information form the VM" -ForegroundColor Green
-                        if ($vm.StorageProfile.OsDisk.OsType.ToString() -eq 'Windows'){
-                            $result = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunPowerShellScript' -ScriptPath "DisksInfo.ps1" -ErrorVariable evt -ErrorAction SilentlyContinue
-                            if ($result.Status -eq "Succeeded"){
-                                $windowsVmDisks = $this.WindowsCmdReturnToJson($result.Value[0].Message)
-                            }
-                        }
-                        elseif ($vm.StorageProfile.OsDisk.OsType.ToString() -eq 'Linux'){
-                            $result = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunShellScript' -ScriptPath "DisksInfo.sh" -ErrorVariable evt -ErrorAction SilentlyContinue
-                            if ($result.Status -eq "Succeeded"){
-                                $linuxVmDisks = $this.LinuxCmdReturnToJson($result.Value[0].Message) 
-                            }
-                        }
                         
-                        if (-not $result){
-                            $propertyError = @{}
-                            $propertyError.Add("Error","Not able to run the remote script for the " + $vm.Name )
-                            Write-Host "Not able to run the remote script for the " $vm.Name " this registry was saved to the vmdiskserror table" -ForegroundColor Red 
-                            $this.SaveToTable($tableError, $execution_date, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
-                        }else{
-                            if (-not $result.Status -eq "Succeeded"){
-                                $propertyError = @{}
-                                $propertyError.Add("Error",$result.Error.Message)
-    
-                                #Log Error on vm disk error table
-                                $this.SaveToTable($tableError, $execution_date, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
-                                if($retry -gt 3){
-                                    Write-Host "Error Trying go get disk information for VM " $vm.Name ", please check if there is something wrong with this particular VM. error: " $evt -ForegroundColor Red 
-                                    break
-                                }
-                            }else{
-                                if ($result.Value[1] -and $result.Value[1].Message.Trim().Length -gt 0){
-                                    $propertyError = @{}
-                                    $propertyError.Add("Error",$result.Value[1].Message)
-                                    Write-Host "A error was returned from the remote script" $vm.Name "this registry was saved to the vmdiskserror table" -ForegroundColor Red 
-                                    $this.SaveToTable($tableError, $execution_date, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
+                        try{
+                            Write-Host "Try " $retry ": Getting information disks information form the VM" -ForegroundColor Green
+                            if ($vm.StorageProfile.OsDisk.OsType.ToString() -eq 'Windows'){
+                                $result = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunPowerShellScript' -ScriptPath "DisksInfo.ps1" -ErrorVariable evt -ErrorAction SilentlyContinue
+                                if ($result.Status -eq "Succeeded"){
+                                    $windowsVmDisks = $this.WindowsCmdReturnToJson($result.Value[0].Message)
                                 }
                             }
-                            
+                            elseif ($vm.StorageProfile.OsDisk.OsType.ToString() -eq 'Linux'){
+                                $result = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunShellScript' -ScriptPath "DisksInfo.sh" -ErrorVariable evt -ErrorAction SilentlyContinue
+                                if ($result.Status -eq "Succeeded"){
+                                    $linuxVmDisks = $this.LinuxCmdReturnToJson($result.Value[0].Message) 
+                                }
+                            }
+                        
+                        
+                            if (-not $result){
+                                $propertyError = @{}
+                                $propertyError.Add("Error","Not able to run the remote script for the " + $vm.Name )
+                                Write-Host "Not able to run the remote script for the " $vm.Name " this registry was saved to the vmdiskserror table" -ForegroundColor Red 
+                                $this.SaveToTable($tableError, $execution_date, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
+                            }else{
+                                if (-not $result.Status -eq "Succeeded"){
+                                    $propertyError = @{}
+                                    $propertyError.Add("Error",$result.Error.Message)
+        
+                                    #Log Error on vm disk error table
+                                    $this.SaveToTable($tableError, $execution_date, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
+                                    if($retry -gt 3){
+                                        Write-Host "Error Trying go get disk information for VM " $vm.Name ", please check if there is something wrong with this particular VM. error: " $evt -ForegroundColor Red 
+                                        break
+                                    }
+                                }else{
+                                    if ($result.Value[1] -and $result.Value[1].Message.Trim().Length -gt 0){
+                                        $propertyError = @{}
+                                        $propertyError.Add("Error",$result.Value[1].Message)
+                                        Write-Host "A error was returned from the remote script" $vm.Name "this registry was saved to the vmdiskserror table" -ForegroundColor Red 
+                                        $this.SaveToTable($tableError, $execution_date, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
+                                    }
+                                }
+                                
+                            }
+                        }Catch{
+                            $ErrorMessage = $_.Exception.Message
+                            $propertyError = @{}
+                            $propertyError.Add("Error",$ErrorMessage)
+                            Write-Host "A error happened running the script" $vm.Name " - Error message " $ErrorMessage -ForegroundColor Red 
+                            $this.SaveToTable($tableError, $execution_date, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
                         }
-
                         
                         $retry = $retry + 1
                     }
@@ -602,3 +612,5 @@ Write-Host "Warning: This script may change the active subscription for your con
 $diskAssessment = New-Object DiskAssessment
 
 $diskAssessment.Main($TargetSubscriptionName,$TargetResourceGroup,$ReportAzureSubscriptionName,$ReportAzureStorageResourceGroup,$ReportAzureStorageName)
+
+Write-Host "Script has finished with success!" -ForegroundColor Green
