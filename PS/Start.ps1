@@ -117,9 +117,9 @@ param (
                 return ($str | ConvertFrom-Json)
             }
         }Catch{
-            Write-Host "Error found to parse the windows disk information " $str -ForegroundColor Red 
+            Write-Host "Error found to parse the windows disk information " $str -ForegroundColor Red
+            throw "Error found to parse the linux disk information " + $str 
         }
-
         return ("{}" | ConvertFrom-Json)
     }
     
