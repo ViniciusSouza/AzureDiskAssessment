@@ -292,8 +292,8 @@ param (
                 $table = New-AzureStorageTable -Name $tableName -Context $saContext -ErrorVariable evt -ErrorAction SilentlyContinue
                 if ($evt){
                     Write-Host "Error: Try " $retry " Creating Azure Storage Table " $tableName -ForegroundColor Red 
-                    Start-Sleep -s 15
-                    if($retry -gt 3){
+                    Start-Sleep -s 5
+                    if($retry -lt 3){
                         Write-Host "Error: After some tries was not possible to create the table, please try again! " $tableName -ForegroundColor Red 
                         exit 1
                     }
@@ -459,39 +459,39 @@ param (
                                 }
                             }
                         
-                        
                             if (-not $result){
                                 $propertyError = @{}
                                 $propertyError.Add("Error","Not able to run the remote script for the " + $vm.Name )
                                 Write-Host "Not able to run the remote script for the " $vm.Name " this registry was saved to the vmdiskserror table" -ForegroundColor Red 
-                                $this.SaveToTable($tableError, $execution_date, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
+                                $this.SaveToTable($tableError, $execution_date+"_"+$retry, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
                             }else{
                                 if (-not $result.Status -eq "Succeeded"){
                                     $propertyError = @{}
                                     $propertyError.Add("Error",$result.Error.Message)
         
                                     #Log Error on vm disk error table
-                                    $this.SaveToTable($tableError, $execution_date, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
-                                    if($retry -gt 3){
-                                        Write-Host "Error Trying go get disk information for VM " $vm.Name ", please check if there is something wrong with this particular VM. error: " $evt -ForegroundColor Red 
-                                        break
-                                    }
+                                    $this.SaveToTable($tableError, $execution_date+"_"+$retry, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
+                                   
                                 }else{
                                     if ($result.Value[1] -and $result.Value[1].Message.Trim().Length -gt 0){
                                         $propertyError = @{}
                                         $propertyError.Add("Error",$result.Value[1].Message)
                                         Write-Host "A error was returned from the remote script" $vm.Name "this registry was saved to the vmdiskserror table" -ForegroundColor Red 
-                                        $this.SaveToTable($tableError, $execution_date, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
+                                        $this.SaveToTable($tableError, $execution_date+"_"+$retry, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
                                     }
                                 }
-                                
                             }
                         }Catch{
                             $ErrorMessage = $_.Exception.Message
                             $propertyError = @{}
                             $propertyError.Add("Error",$ErrorMessage)
                             Write-Host "A error happened running the script" $vm.Name " - Error message " $ErrorMessage -ForegroundColor Red 
-                            $this.SaveToTable($tableError, $execution_date, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
+                            $this.SaveToTable($tableError, $execution_date+"_"+$retry, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
+                        }
+
+                        if($retry -lt 3){
+                            Write-Host "Error Trying go get disk information for VM " $vm.Name ", please check if there is something wrong with this particular VM. error: " $evt -ForegroundColor Red 
+                            break
                         }
                         
                         $retry = $retry + 1
@@ -547,30 +547,32 @@ param (
                     $disksList = $this.Correlate($dataDisk, $windowsVmDisks, $linuxVmDisks, $false)
         
                     $data_disk_type = "Standard_HDD"
-        
-                    $disk = ($disks[$dataDisk.ManagedDisk.Id] | ConvertFrom-Json )
-        
-                    if ($disk.Sku){
-                        $data_disk_type = $disk.Sku.Tier
-                    }
-        
-                    $property.Add("datadisk"+$i+"_lun",$dataDisk.Lun)
-                    $property.Add("datadisk"+$i+"_id",$disk.Id)
-                    $property.Add("datadisk"+$i+"_name",$disk.Name)
-                    $property.Add("datadisk"+$i+"_type",$data_disk_type)
-                    $property.Add("datadisk"+$i+"_size_allocated",$disk.DiskSizeGB)
-                    $property.Add("datadisk"+$i+"_size_tier", $this.tierStorageSize($data_disk_type,$disk.DiskSizeGB))
-                    $property.Add("datadisk"+$i+"_offer_name",$this.tierStorageOffer($data_disk_type,$disk.DiskSizeGB))
-                    
-                    if ($disksList -and $disksList.Count -gt 0){
-                        if ($linuxVmDisks) { 
-                            #If Linux
-                            $property.Add("datadisk"+$i+"_OSDiskSize",$disksList[0]["OSDiskDiskSize"])
-                            $property.Add("datadisk"+$i+"_OsDiskFree",$disksList[0]["OSDiskDiskFree"])
-                            $property.Add("datadisk"+$i+"_OsDiskUsed",$disksList[0]["OSDiskDiskUsed"])
-                        }else{
-                            #if Windows
-                            $property.Add("datadisk"+$i+"_OSDiskSize",$disksList[0]["OSDiskDiskSize"])
+
+                    if ($disks[$dataDisk.ManagedDisk.Id]){
+                        $disk = ($disks[$dataDisk.ManagedDisk.Id] | ConvertFrom-Json )
+            
+                        if ($disk.Sku){
+                            $data_disk_type = $disk.Sku.Tier
+                        }
+            
+                        $property.Add("datadisk"+$i+"_lun",$dataDisk.Lun)
+                        $property.Add("datadisk"+$i+"_id",$disk.Id)
+                        $property.Add("datadisk"+$i+"_name",$disk.Name)
+                        $property.Add("datadisk"+$i+"_type",$data_disk_type)
+                        $property.Add("datadisk"+$i+"_size_allocated",$disk.DiskSizeGB)
+                        $property.Add("datadisk"+$i+"_size_tier", $this.tierStorageSize($data_disk_type,$disk.DiskSizeGB))
+                        $property.Add("datadisk"+$i+"_offer_name",$this.tierStorageOffer($data_disk_type,$disk.DiskSizeGB))
+                        
+                        if ($disksList -and $disksList.Count -gt 0){
+                            if ($linuxVmDisks) { 
+                                #If Linux
+                                $property.Add("datadisk"+$i+"_OSDiskSize",$disksList[0]["OSDiskDiskSize"])
+                                $property.Add("datadisk"+$i+"_OsDiskFree",$disksList[0]["OSDiskDiskFree"])
+                                $property.Add("datadisk"+$i+"_OsDiskUsed",$disksList[0]["OSDiskDiskUsed"])
+                            }else{
+                                #if Windows
+                                $property.Add("datadisk"+$i+"_OSDiskSize",$disksList[0]["OSDiskDiskSize"])
+                            }
                         }
                     }
 
