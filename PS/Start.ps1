@@ -293,7 +293,7 @@ param (
                 if ($evt){
                     Write-Host "Error: Try " $retry " Creating Azure Storage Table " $tableName -ForegroundColor Red 
                     Start-Sleep -s 5
-                    if($retry -lt 3){
+                    if($retry -gt 2){
                         Write-Host "Error: After some tries was not possible to create the table, please try again! " $tableName -ForegroundColor Red 
                         exit 1
                     }
@@ -386,6 +386,18 @@ param (
         return $true
     }
 
+
+    HandleError([Object]$table,[string] $table_key, [Object]$vm, [String]$errorMessage){
+        try{
+            $propertyError = @{}
+            $propertyError.Add("Error",$errorMessage)
+            Write-Host $errorMessage -ForegroundColor Yellow 
+            $this.SaveToTable($table, $table_key, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
+        }Catch{
+            Write-Host "Error handling error: "  $_.Exception.Message -ForegroundColor Red
+        }
+    }
+
     Main([string]$TargetSubscriptionName,
         [string]$TargetResourceGroup,
         [string]$ReportAzureSubscriptionName,
@@ -422,183 +434,174 @@ param (
             $execution_date = Get-Date -UFormat "%Y-%m-%d-%H-%M"
         
             foreach($vm in $vms){
-        
-                Write-Host $sub.Name - $vm.ResourceGroupName - $vm.Name  -ForegroundColor Green
-                
-                $isRunnning = $false
-                $VmDisk = $null
-                $property = @{}
-                $property.Add("vm_name",$vm.Name)
-                $property.Add("vm_id",$vm.Id)
-                $property.Add("resourcegroup",$vm.ResourceGroupName)
-                $property.Add("location",$vm.Location)
-                $property.Add("vmtype",$vm.HardwareProfile.VmSize.ToString())
-        
-                $windowsVmDisks = $null
-                $linuxVmDisks = $null
-                if ($vm.StorageProfile.OsDisk.DiskSizeGB){
-                    $isRunnning = $true
+                try{
+                    Write-Host "Processing - Subscription: " $sub.Name " Resource Group: " $vm.ResourceGroupName " VM: " $vm.Name  -ForegroundColor Yellow
                     
-                    $result = $null
-                    $evt = $null
-                    $retry=1
-                    while(-not $result -or -not $result.Status -eq "Succeeded"){
+                    $isRunnning = $false
+                    $property = @{}
+                    $property.Add("vm_name",$vm.Name)
+                    $property.Add("vm_id",$vm.Id)
+                    $property.Add("resourcegroup",$vm.ResourceGroupName)
+                    $property.Add("location",$vm.Location)
+                    $property.Add("vmtype",$vm.HardwareProfile.VmSize.ToString())
+            
+                    $windowsVmDisks = $null
+                    $linuxVmDisks = $null
+                    if ($vm.StorageProfile.OsDisk.DiskSizeGB){
+                        $isRunnning = $true
                         
-                        try{
-                            Write-Host "Try " $retry ": Getting information disks information form the VM" -ForegroundColor Green
-                            if ($vm.StorageProfile.OsDisk.OsType.ToString() -eq 'Windows'){
-                                $result = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunPowerShellScript' -ScriptPath "DisksInfo.ps1" -ErrorVariable evt -ErrorAction SilentlyContinue
-                                if ($result.Status -eq "Succeeded"){
-                                    $windowsVmDisks = $this.WindowsCmdReturnToJson($result.Value[0].Message)
-                                }
-                            }
-                            elseif ($vm.StorageProfile.OsDisk.OsType.ToString() -eq 'Linux'){
-                                $result = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunShellScript' -ScriptPath "DisksInfo.sh" -ErrorVariable evt -ErrorAction SilentlyContinue
-                                if ($result.Status -eq "Succeeded"){
-                                    $linuxVmDisks = $this.LinuxCmdReturnToJson($result.Value[0].Message) 
-                                }
-                            }
-                        
-                            if (-not $result){
-                                $propertyError = @{}
-                                $propertyError.Add("Error","Not able to run the remote script for the " + $vm.Name )
-                                Write-Host "Not able to run the remote script for the " $vm.Name " this registry was saved to the vmdiskserror table" -ForegroundColor Red 
-                                $this.SaveToTable($tableError, $execution_date+"_"+$retry, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
-                            }else{
-                                if (-not $result.Status -eq "Succeeded"){
-                                    $propertyError = @{}
-                                    $propertyError.Add("Error",$result.Error.Message)
-        
-                                    #Log Error on vm disk error table
-                                    $this.SaveToTable($tableError, $execution_date+"_"+$retry, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
-                                   
-                                }else{
-                                    if ($result.Value[1] -and $result.Value[1].Message.Trim().Length -gt 0){
-                                        $propertyError = @{}
-                                        $propertyError.Add("Error",$result.Value[1].Message)
-                                        Write-Host "A error was returned from the remote script" $vm.Name "this registry was saved to the vmdiskserror table" -ForegroundColor Red 
-                                        $this.SaveToTable($tableError, $execution_date+"_"+$retry, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
+                        $result = $null
+                        $evt = $null
+                        $retry=1
+                        while(-not $result -or -not $result.Status -eq "Succeeded"){
+                            
+                            try{
+                                Write-Host "Try " $retry ": Getting information disks information for the VM" -ForegroundColor Yellow
+                                if ($vm.StorageProfile.OsDisk.OsType.ToString() -eq 'Windows'){
+                                    $result = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunPowerShellScript' -ScriptPath "DisksInfo.ps1" -ErrorVariable evt -ErrorAction SilentlyContinue
+                                    if ($result.Status -eq "Succeeded"){
+                                        $windowsVmDisks = $this.WindowsCmdReturnToJson($result.Value[0].Message)
                                     }
                                 }
+                                elseif ($vm.StorageProfile.OsDisk.OsType.ToString() -eq 'Linux'){
+                                    $result = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunShellScript' -ScriptPath "DisksInfo.sh" -ErrorVariable evt -ErrorAction SilentlyContinue
+                                    if ($result.Status -eq "Succeeded"){
+                                        $linuxVmDisks = $this.LinuxCmdReturnToJson($result.Value[0].Message) 
+                                    }
+                                }
+                            
+                                if (-not $result){
+                                    $this.HandleError($tableError, $execution_date+"_"+$retry, $vm, "Not able to run the remote script for the " + $vm.Name )
+                                }else{
+                                    if (-not $result.Status -eq "Succeeded"){
+                                        #Log Error on vm disk error table
+                                        $this.HandleError($tableError, $execution_date+"_"+$retry, $vm,  $result.Error.Message)
+                                    }else{
+                                        if ($result.Value[1] -and $result.Value[1].Message.Trim().Length -gt 0){
+                                            $this.HandleError($tableError, $execution_date+"_"+$retry, $vm,  "A error was returned from the remote script " + $vm.Name + " this registry was saved to the vmdiskserror table")
+                                        }
+                                    }
+                                }
+                            }Catch{
+                                $this.HandleError($tableError, $execution_date+"_"+$retry, $vm, $_.Exception.Message)
                             }
-                        }Catch{
-                            $ErrorMessage = $_.Exception.Message
-                            $propertyError = @{}
-                            $propertyError.Add("Error",$ErrorMessage)
-                            Write-Host "A error happened running the script" $vm.Name " - Error message " $ErrorMessage -ForegroundColor Red 
-                            $this.SaveToTable($tableError, $execution_date+"_"+$retry, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $propertyError)
-                        }
 
-                        if($retry -lt 3){
-                            Write-Host "Error Trying go get disk information for VM " $vm.Name ", please check if there is something wrong with this particular VM. error: " $evt -ForegroundColor Red 
-                            break
+                            if($retry -gt 2){
+                                $this.HandleError($tableError, $execution_date+"_"+$retry, $vm, "Error Trying go get disk information for VM " + $vm.Name +  ", please check if there is something wrong with this particular VM. error: " )
+                                Write-Host $evt -ForegroundColor Red 
+                                break
+                            }
+                            
+                            $retry = $retry + 1
                         }
-                        
-                        $retry = $retry + 1
+                    }else{
+                        Write-Host "VM " $vm.name "is not running skipping the remote script execution " -ForegroundColor Yellow
                     }
-                }
 
-                $property.Add("vm_running",$isRunnning)
-                $property.Add("host_name",$vm.OSProfile.ComputerName)
-                $property.Add("ostype",$vm.StorageProfile.OsDisk.OsType.ToString())
-                $property.Add("osDisk_name",$vm.StorageProfile.OsDisk.Name)
-        
-                if ($vm.StorageProfile.OsDisk.ManagedDisk){
-                    $property.Add("osDisk_id",$vm.StorageProfile.OsDisk.ManagedDisk.Id)
-                    $disk = ($disks[$vm.StorageProfile.OsDisk.ManagedDisk.Id] | ConvertFrom-Json )
-                    $property.Add("osDisk_disk_type",$disk.Sku.Tier)
-                    $property.Add("osDisk_size_allocated",$disk.DiskSizeGB)
-                    $property.Add("osDisk_size_tier",$this.tierStorageSize($disk.Sku.Tier,$disk.DiskSizeGB))
-                    $property.Add("osDisk_offer_name",$this.tierStorageOffer($disk.Sku.Tier,$disk.DiskSizeGB))
-                    
-                    $disksList = $this.Correlate($disk, $windowsVmDisks, $linuxVmDisks, $true)
-        
-                    if ($disksList){
+                    $property.Add("vm_running",$isRunnning)
+                    $property.Add("host_name",$vm.OSProfile.ComputerName)
+                    $property.Add("ostype",$vm.StorageProfile.OsDisk.OsType.ToString())
+                    $property.Add("osDisk_name",$vm.StorageProfile.OsDisk.Name)
+            
+                    if ($vm.StorageProfile.OsDisk.ManagedDisk){
+                        $property.Add("osDisk_id",$vm.StorageProfile.OsDisk.ManagedDisk.Id)
+                        $disk = ($disks[$vm.StorageProfile.OsDisk.ManagedDisk.Id] | ConvertFrom-Json )
+                        $property.Add("osDisk_disk_type",$disk.Sku.Tier)
+                        $property.Add("osDisk_size_allocated",$disk.DiskSizeGB)
+                        $property.Add("osDisk_size_tier",$this.tierStorageSize($disk.Sku.Tier,$disk.DiskSizeGB))
+                        $property.Add("osDisk_offer_name",$this.tierStorageOffer($disk.Sku.Tier,$disk.DiskSizeGB))
+                        
+                        $disksList = $this.Correlate($disk, $windowsVmDisks, $linuxVmDisks, $true)
+            
+                        if ($disksList){
+
+                            $vol = 1
+                            foreach($vmdatadisk in $disksList){
+                                if ($disksList.Count -gt 1){
+                                    $prefix = "osDisk_vm_volume_"+$vol
+                                }else{
+                                    $prefix = "osDisk_vm"
+                                }
+                                $property.Add($prefix+"_driveletter",$vmdatadisk["OSDiskDriveLetter"])
+                                $property.Add($prefix+"_size",$vmdatadisk["OSDiskDiskSize"])
+                                $property.Add($prefix+"_partition",$vmdatadisk["OSDiskPartition"])
+                                $property.Add($prefix+"_lun",$vmdatadisk["OSDiskLun"])
+                                $property.Add($prefix+"_partition_size",$vmdatadisk["OSDiskRawSize"])
+                                $property.Add($prefix+"_volume_name",$vmdatadisk["OSDiskVolumeName"])
+                                $property.Add($prefix+"_volume_size",$vmdatadisk["OSDiskVolumeSize"])
+                                $property.Add($prefix+"_volume_freespace",$vmdatadisk["OSDiskVolumeFreeSpace"])
+                                $vol = $vol + 1
+                            }
+                        }
+                    }else{
+                        $property.Add("osDisk_disk_type","Unmanaged")
+                        $property.Add("osDisk_size_allocated",$vm.StorageProfile.OsDisk.DiskSizeGB)
+                        $property.Add("osDisk_vhd",$vm.StorageProfile.OsDisk.Vhd.Uri.ToString())
+                    }
+            
+                    $i = 0
+                    foreach($dataDisk in $vm.StorageProfile.DataDisks){
+            
+                        Write-Host $sub.Name - $vm.ResourceGroupName - $vm.Name - $i - id $dataDisk.ManagedDisk.Id  -ForegroundColor Green
+                        
+                        $disksList = $this.Correlate($dataDisk, $windowsVmDisks, $linuxVmDisks, $false)
+            
+                        $data_disk_type = "Standard_HDD"
+
+                        if ($disks.count -gt 0 -and $disks.ContainsKey($dataDisk.ManagedDisk.Id)){
+                            $disk = ($disks[$dataDisk.ManagedDisk.Id] | ConvertFrom-Json )
+                
+                            if ($disk.Sku){
+                                $data_disk_type = $disk.Sku.Tier
+                            }
+                
+                            $property.Add("datadisk"+$i+"_lun",$dataDisk.Lun)
+                            $property.Add("datadisk"+$i+"_id",$disk.Id)
+                            $property.Add("datadisk"+$i+"_name",$disk.Name)
+                            $property.Add("datadisk"+$i+"_type",$data_disk_type)
+                            $property.Add("datadisk"+$i+"_size_allocated",$disk.DiskSizeGB)
+                            $property.Add("datadisk"+$i+"_size_tier", $this.tierStorageSize($data_disk_type,$disk.DiskSizeGB))
+                            $property.Add("datadisk"+$i+"_offer_name",$this.tierStorageOffer($data_disk_type,$disk.DiskSizeGB))
+                            
+                            if ($disksList -and $disksList.Count -gt 0){
+                                if ($linuxVmDisks) { 
+                                    #If Linux
+                                    $property.Add("datadisk"+$i+"_OSDiskSize",$disksList[0]["OSDiskDiskSize"])
+                                    $property.Add("datadisk"+$i+"_OsDiskFree",$disksList[0]["OSDiskDiskFree"])
+                                    $property.Add("datadisk"+$i+"_OsDiskUsed",$disksList[0]["OSDiskDiskUsed"])
+                                }else{
+                                    #if Windows
+                                    $property.Add("datadisk"+$i+"_OSDiskSize",$disksList[0]["OSDiskDiskSize"])
+                                }
+                            }
+                        }
 
                         $vol = 1
                         foreach($vmdatadisk in $disksList){
-                            if ($disksList.Count -gt 1){
-                                $prefix = "osDisk_vm_volume_"+$vol
-                            }else{
-                                $prefix = "osDisk_vm"
-                            }
+                            $prefix = "datadisk"+$i+"_volume_"+$vol
                             $property.Add($prefix+"_driveletter",$vmdatadisk["OSDiskDriveLetter"])
-                            $property.Add($prefix+"_size",$vmdatadisk["OSDiskDiskSize"])
                             $property.Add($prefix+"_partition",$vmdatadisk["OSDiskPartition"])
                             $property.Add($prefix+"_lun",$vmdatadisk["OSDiskLun"])
                             $property.Add($prefix+"_partition_size",$vmdatadisk["OSDiskRawSize"])
                             $property.Add($prefix+"_volume_name",$vmdatadisk["OSDiskVolumeName"])
+                            $property.Add($prefix+"_volume_freeSpace",$vmdatadisk["OSDiskVolumeFreeSpace"])
+                            $property.Add($prefix+"_volume_usedSpace",$vmdatadisk["OSDiskVolumeUsed"])
                             $property.Add($prefix+"_volume_size",$vmdatadisk["OSDiskVolumeSize"])
-                            $property.Add($prefix+"_volume_freespace",$vmdatadisk["OSDiskVolumeFreeSpace"])
+
                             $vol = $vol + 1
                         }
-                    }
-                }else{
-                    $property.Add("osDisk_disk_type","Unmanaged")
-                    $property.Add("osDisk_size_allocated",$vm.StorageProfile.OsDisk.DiskSizeGB)
-                    $property.Add("osDisk_vhd",$vm.StorageProfile.OsDisk.Vhd.Uri.ToString())
-                }
-        
-                $i = 0
-                foreach($dataDisk in $vm.StorageProfile.DataDisks){
-        
-                    Write-Host $sub.Name - $vm.ResourceGroupName - $vm.Name - $i - id $dataDisk.ManagedDisk.Id  -ForegroundColor Green
-                    
-                    $disksList = $this.Correlate($dataDisk, $windowsVmDisks, $linuxVmDisks, $false)
-        
-                    $data_disk_type = "Standard_HDD"
-
-                    if ($disks[$dataDisk.ManagedDisk.Id]){
-                        $disk = ($disks[$dataDisk.ManagedDisk.Id] | ConvertFrom-Json )
             
-                        if ($disk.Sku){
-                            $data_disk_type = $disk.Sku.Tier
+                        if ($dataDisk.Vhd){
+                            $property.Add("datadisk"+$i+"_vhd",$dataDisk.Vhd.Uri.ToString())
                         }
             
-                        $property.Add("datadisk"+$i+"_lun",$dataDisk.Lun)
-                        $property.Add("datadisk"+$i+"_id",$disk.Id)
-                        $property.Add("datadisk"+$i+"_name",$disk.Name)
-                        $property.Add("datadisk"+$i+"_type",$data_disk_type)
-                        $property.Add("datadisk"+$i+"_size_allocated",$disk.DiskSizeGB)
-                        $property.Add("datadisk"+$i+"_size_tier", $this.tierStorageSize($data_disk_type,$disk.DiskSizeGB))
-                        $property.Add("datadisk"+$i+"_offer_name",$this.tierStorageOffer($data_disk_type,$disk.DiskSizeGB))
-                        
-                        if ($disksList -and $disksList.Count -gt 0){
-                            if ($linuxVmDisks) { 
-                                #If Linux
-                                $property.Add("datadisk"+$i+"_OSDiskSize",$disksList[0]["OSDiskDiskSize"])
-                                $property.Add("datadisk"+$i+"_OsDiskFree",$disksList[0]["OSDiskDiskFree"])
-                                $property.Add("datadisk"+$i+"_OsDiskUsed",$disksList[0]["OSDiskDiskUsed"])
-                            }else{
-                                #if Windows
-                                $property.Add("datadisk"+$i+"_OSDiskSize",$disksList[0]["OSDiskDiskSize"])
-                            }
-                        }
+                        $i = $i +1
                     }
-
-                    $vol = 1
-                    foreach($vmdatadisk in $disksList){
-                        $prefix = "datadisk"+$i+"_volume_"+$vol
-                        $property.Add($prefix+"_driveletter",$vmdatadisk["OSDiskDriveLetter"])
-                        $property.Add($prefix+"_partition",$vmdatadisk["OSDiskPartition"])
-                        $property.Add($prefix+"_lun",$vmdatadisk["OSDiskLun"])
-                        $property.Add($prefix+"_partition_size",$vmdatadisk["OSDiskRawSize"])
-                        $property.Add($prefix+"_volume_name",$vmdatadisk["OSDiskVolumeName"])
-                        $property.Add($prefix+"_volume_freeSpace",$vmdatadisk["OSDiskVolumeFreeSpace"])
-                        $property.Add($prefix+"_volume_usedSpace",$vmdatadisk["OSDiskVolumeUsed"])
-                        $property.Add($prefix+"_volume_size",$vmdatadisk["OSDiskVolumeSize"])
-
-                        $vol = $vol + 1
-                    }
-        
-                    if ($dataDisk.Vhd){
-                        $property.Add("datadisk"+$i+"_vhd",$dataDisk.Vhd.Uri.ToString())
-                    }
-        
-                    $i = $i +1
+            
+                    $this.SaveToTable($table, $execution_date, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $property)
+                }Catch{
+                    $this.HandleError($tableError, $execution_date, $vm, $_.Exception.Message)
                 }
-        
-                $this.SaveToTable($table, $execution_date, $vm.Id.Replace("/","__"),"Compute",$vm.Name, $property)
             }
         
             $this.ProcessUnmanagedDisk($disks, $table, $execution_date)
