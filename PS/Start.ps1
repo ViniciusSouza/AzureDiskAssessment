@@ -190,6 +190,11 @@ param (
                 if ($correlatedDisk) {
                     $VmDisk = $this.GetVMDiskRecord($disk,$correlatedDisk,$null,$OsDisk,$false)
                     [void]$disksList.Add($VmDisk)
+                }else{
+                    if ($winDisk.DriveLetter -eq "D:" -and -not $OsDisk){
+                        $VmDisk = $this.GetVMDiskRecord($null,$winDisk,$null,$OsDisk,$false)
+                        [void]$disksList.Add($VmDisk)
+                    }
                 }
             }
         }
@@ -222,6 +227,11 @@ param (
                         $VmDisk = $this.GetVMDiskRecord($disk,$correlatedDisk,$null,$OsDisk,$true)
                         [void]$disksList.Add($VmDisk)
                     }
+                }else{
+                    if ($linuxDisk.name -ne "sdb"){
+                        $VmDisk = $this.GetVMDiskRecord($null,$linuxDisk,$null,$OsDisk,$true)
+                        [void]$disksList.Add($VmDisk)
+                    }
                 }
             }
         }
@@ -231,10 +241,14 @@ param (
     [System.Object]GetVMDiskRecord($AzureDisk, $OSCorrelateDisk, $OSVolume, [bool] $OSDisk, [bool]$isLinux){
         $VmDisk = @{}
 
-        if (-not $OsDisk){
-            $VmDisk["DiskID"] = $AzureDisk.ManagedDisk.Id
+        if ($AzureDisk){
+            if (-not $OsDisk){
+                $VmDisk["DiskID"] = $AzureDisk.ManagedDisk.Id
+            }else{
+                $VmDisk["DiskID"] = $AzureDisk.Id
+            }
         }else{
-            $VmDisk["DiskID"] = $AzureDisk.Id
+            $VmDisk["DiskID"] = "Azure Temporary Disk"
         }
 
         if ($isLinux){
@@ -398,6 +412,37 @@ param (
         }
     }
 
+    [Object]ExecuteRemoteScript([Object]$table, [string] $table_key, [Object]$vm){
+        
+        $remotejob = $null
+        $result  = $null
+
+        if ($vm.StorageProfile.OsDisk.OsType.ToString() -eq 'Linux'){
+            $remotejob = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunShellScript' -ScriptPath "DisksInfo.sh" -ErrorVariable evt -ErrorAction SilentlyContinue -AsJob
+        }else{
+            $remotejob = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunPowerShellScript' -ScriptPath "DisksInfo.ps1" -ErrorVariable evt -ErrorAction SilentlyContinue -AsJob
+        }
+
+        $time = 0
+        while($remotejob.JobStateInfo.State -ne 2){
+            Start-Sleep 20
+            if ($time -gt 16){
+                break
+            }
+            $time++
+        }
+
+        if ($remotejob.JobStateInfo.State -eq 2){
+            $result = Receive-Job $remotejob
+            Remove-Job $remotejob
+        }else{
+            HandleError($table, $table_key, $vm, "Remote script timeout after 5 minutes")
+        }
+
+        return $result
+    }
+
+
     Main([string]$TargetSubscriptionName,
         [string]$TargetResourceGroup,
         [string]$ReportAzureSubscriptionName,
@@ -430,7 +475,11 @@ param (
                 $vms = Get-AzureRmVM
                 Get-AzureRmDisk | foreach { $disks.Add($_.Id, ($_ | ConvertTo-Json))}
             }
-        
+            
+            ###REMOVE THIS LINE
+            $vms = Get-AzureRmVM -ResourceGroupName $TargetResourceGroup -Name 'wvm2016teste'
+            ###REMOVE THIS LINE
+
             $execution_date = Get-Date -UFormat "%Y-%m-%d-%H-%M"
         
             foreach($vm in $vms){
@@ -453,18 +502,19 @@ param (
                         $result = $null
                         $evt = $null
                         $retry=1
+                        
                         while(-not $result -or -not $result.Status -eq "Succeeded"){
                             
                             try{
                                 Write-Host "Try " $retry ": Getting information disks information for the VM" -ForegroundColor Yellow
 
+                                $result = $this.ExecuteRemoteScript($tableError, $execution_date+"_"+$retry, $vm)
+
                                 if ($vm.StorageProfile.OsDisk.OsType.ToString() -eq 'Linux'){
-                                    $result = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunShellScript' -ScriptPath "DisksInfo.sh" -ErrorVariable evt -ErrorAction SilentlyContinue
                                     if ($result.Status -eq "Succeeded"){
                                         $linuxVmDisks = $this.LinuxCmdReturnToJson($result.Value[0].Message) 
                                     }
                                 }else{
-                                    $result = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunPowerShellScript' -ScriptPath "DisksInfo.ps1" -ErrorVariable evt -ErrorAction SilentlyContinue
                                     if ($result.Status -eq "Succeeded"){
                                         $windowsVmDisks = $this.WindowsCmdReturnToJson($result.Value[0].Message)
                                     }

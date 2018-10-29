@@ -41,7 +41,7 @@ function GetDiskResult{
           $ResultJon += ","
       }
 
-      $ResultJon = "{""Disk"":"""+ $obj.Disk.Replace("\","\\") +""", ""Lun"":"""+$obj.Lun+""", ""DiskSize"":"""+$obj.DiskSize+""", ""DiskModel"":"""+$obj.DiskModel+""", ""Partition"":"""+$obj.Partition+""", ""RawSize"":"""+$obj.RawSize+""", ""DriveLetter"":"""+$obj.DriveLetter+""", ""VolumeName"":"""+$obj.VolumeName+""", ""Size"":"""+$obj.Size+""", ""FreeSpace"":"""+$obj.FreeSpace+""", ""VolumeUsed"":"""+$obj.VolumeUsed+"""}"
+      $ResultJon += "{""Disk"":"""+ $obj.Disk.Replace("\","\\") +""", ""Lun"":"""+$obj.Lun+""", ""DiskSize"":"""+$obj.DiskSize+""", ""DiskModel"":"""+$obj.DiskModel+""", ""Partition"":"""+$obj.Partition+""", ""RawSize"":"""+$obj.RawSize+""", ""DriveLetter"":"""+$obj.DriveLetter+""", ""VolumeName"":"""+$obj.VolumeName+""", ""Size"":"""+$obj.Size+""", ""FreeSpace"":"""+$obj.FreeSpace+""", ""VolumeUsed"":"""+$obj.VolumeUsed+"""}"
   
   }
 
