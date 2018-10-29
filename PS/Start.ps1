@@ -457,21 +457,25 @@ param (
                             
                             try{
                                 Write-Host "Try " $retry ": Getting information disks information for the VM" -ForegroundColor Yellow
-                                if ($vm.StorageProfile.OsDisk.OsType.ToString() -eq 'Windows'){
+
+                                if ($vm.StorageProfile.OsDisk.OsType.ToString() -eq 'Linux'){
+                                    $result = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunShellScript' -ScriptPath "DisksInfo.sh" -ErrorVariable evt -ErrorAction SilentlyContinue
+                                    if ($result.Status -eq "Succeeded"){
+                                        $linuxVmDisks = $this.LinuxCmdReturnToJson($result.Value[0].Message) 
+                                    }
+                                }else{
                                     $result = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunPowerShellScript' -ScriptPath "DisksInfo.ps1" -ErrorVariable evt -ErrorAction SilentlyContinue
                                     if ($result.Status -eq "Succeeded"){
                                         $windowsVmDisks = $this.WindowsCmdReturnToJson($result.Value[0].Message)
                                     }
                                 }
-                                elseif ($vm.StorageProfile.OsDisk.OsType.ToString() -eq 'Linux'){
-                                    $result = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunShellScript' -ScriptPath "DisksInfo.sh" -ErrorVariable evt -ErrorAction SilentlyContinue
-                                    if ($result.Status -eq "Succeeded"){
-                                        $linuxVmDisks = $this.LinuxCmdReturnToJson($result.Value[0].Message) 
-                                    }
-                                }
                             
                                 if (-not $result){
-                                    $this.HandleError($tableError, $execution_date+"_"+$retry, $vm, "Not able to run the remote script for the " + $vm.Name )
+                                    if (-not $evt){
+                                        $this.HandleError($tableError, $execution_date+"_"+$retry, $vm, "Not able to run the remote script for the " + $vm.Name )
+                                    }else{
+                                        $this.HandleError($tableError, $execution_date+"_"+$retry, $vm, "Not able to run the remote script for the " + $vm.Name + " Error: " + $evt )
+                                    }
                                 }else{
                                     if (-not $result.Status -eq "Succeeded"){
                                         #Log Error on vm disk error table
