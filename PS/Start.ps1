@@ -164,7 +164,7 @@ param (
         return $disksJson
     }
 
-    [System.Collections.ArrayList] Correlate ($disk, $windowsVmDisks, $linuxVmDisks, [boolean]$OsDisk){
+    [System.Collections.ArrayList] Correlate ($disk, $windowsVmDisks, $linuxVmDisks, [boolean]$OsDisk, [boolean]$TemporaryDisk){
         $VmDisk = $null
         $disksList =  New-Object System.Collections.ArrayList($null)
        
@@ -188,11 +188,11 @@ param (
                 }
     
                 if ($correlatedDisk) {
-                    $VmDisk = $this.GetVMDiskRecord($disk,$correlatedDisk,$null,$OsDisk,$false)
+                    $VmDisk = $this.GetVMDiskRecord($disk.Id,$correlatedDisk,$null,$OsDisk,$false)
                     [void]$disksList.Add($VmDisk)
                 }else{
-                    if ($winDisk.DriveLetter -eq "D:" -and -not $OsDisk){
-                        $VmDisk = $this.GetVMDiskRecord($null,$winDisk,$null,$OsDisk,$false)
+                    if ($winDisk.DriveLetter -eq "D:" -and $TemporaryDisk){
+                        $VmDisk = $this.GetVMDiskRecord("Temporary OS Disk",$winDisk,$null,$OsDisk,$false)
                         [void]$disksList.Add($VmDisk)
                     }
                 }
@@ -220,16 +220,16 @@ param (
                 if ($correlatedDisk){
                     if ($correlatedDisk.volume.Count -gt 0){
                         foreach($volume in $correlatedDisk.volume){
-                            $VmDisk = $this.GetVMDiskRecord($disk,$correlatedDisk,$volume,$OsDisk,$true)
+                            $VmDisk = $this.GetVMDiskRecord($disk.Id,$correlatedDisk,$volume,$OsDisk,$true)
                             [void]$disksList.Add($VmDisk)
                         }
                     }else{
-                        $VmDisk = $this.GetVMDiskRecord($disk,$correlatedDisk,$null,$OsDisk,$true)
+                        $VmDisk = $this.GetVMDiskRecord($disk.Id,$correlatedDisk,$null,$OsDisk,$true)
                         [void]$disksList.Add($VmDisk)
                     }
                 }else{
-                    if ($linuxDisk.name -ne "sdb"){
-                        $VmDisk = $this.GetVMDiskRecord($null,$linuxDisk,$null,$OsDisk,$true)
+                    if ($linuxDisk.name -eq "sdb" -and $TemporaryDisk){
+                        $VmDisk = $this.GetVMDiskRecord("Temporary OS Disk",$linuxDisk,$null,$OsDisk,$true)
                         [void]$disksList.Add($VmDisk)
                     }
                 }
@@ -238,18 +238,10 @@ param (
         return $disksList
     }
 
-    [System.Object]GetVMDiskRecord($AzureDisk, $OSCorrelateDisk, $OSVolume, [bool] $OSDisk, [bool]$isLinux){
+    [System.Object]GetVMDiskRecord($AzureDiskID, $OSCorrelateDisk, $OSVolume, [bool] $OSDisk, [bool]$isLinux){
         $VmDisk = @{}
 
-        if ($AzureDisk){
-            if (-not $OsDisk){
-                $VmDisk["DiskID"] = $AzureDisk.ManagedDisk.Id
-            }else{
-                $VmDisk["DiskID"] = $AzureDisk.Id
-            }
-        }else{
-            $VmDisk["DiskID"] = "Azure Temporary Disk"
-        }
+        $VmDisk["DiskID"] = $AzureDiskID
 
         if ($isLinux){
             $VmDisk["OSDiskID"] = $OSCorrelateDisk.name
@@ -416,15 +408,16 @@ param (
         
         $remotejob = $null
         $result  = $null
+        $evt = $null
 
         if ($vm.StorageProfile.OsDisk.OsType.ToString() -eq 'Linux'){
-            $remotejob = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunShellScript' -ScriptPath "DisksInfo.sh" -ErrorVariable evt -ErrorAction SilentlyContinue -AsJob
+            $remotejob = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunShellScript' -ScriptPath "DisksInfo.sh"  -ErrorVariable evt -ErrorAction SilentlyContinue -AsJob 
         }else{
             $remotejob = Invoke-AzureRmVMRunCommand -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name -CommandId 'RunPowerShellScript' -ScriptPath "DisksInfo.ps1" -ErrorVariable evt -ErrorAction SilentlyContinue -AsJob
         }
 
         $time = 0
-        while($remotejob.JobStateInfo.State -ne 2){
+        while($remotejob.JobStateInfo.State -eq 1){
             Start-Sleep 20
             if ($time -gt 16){
                 break
@@ -434,10 +427,18 @@ param (
 
         if ($remotejob.JobStateInfo.State -eq 2){
             $result = Receive-Job $remotejob
-            Remove-Job $remotejob
         }else{
-            HandleError($table, $table_key, $vm, "Remote script timeout after 5 minutes")
+            $errorMessage = "Remote script timeout after 5 minutes"
+            if ($remotejob.JobStateInfo.State -eq 3){
+                try{
+                    $errorMessage = $remotejob.Error[0].Exception.Message
+                }Catch{
+
+                }
+            }
+            $this.HandleError($table, $table_key, $vm, $errorMessage)
         }
+        Remove-Job $remotejob
 
         return $result
     }
@@ -477,7 +478,7 @@ param (
             }
             
             ###REMOVE THIS LINE
-            $vms = Get-AzureRmVM -ResourceGroupName $TargetResourceGroup -Name 'wvm2016teste'
+            #$vms = Get-AzureRmVM -ResourceGroupName $TargetResourceGroup -Name 'unmanageddisk'  # 'wvm2016teste'
             ###REMOVE THIS LINE
 
             $execution_date = Get-Date -UFormat "%Y-%m-%d-%H-%M"
@@ -496,15 +497,23 @@ param (
             
                     $windowsVmDisks = $null
                     $linuxVmDisks = $null
-                    if ($vm.StorageProfile.OsDisk.DiskSizeGB){
-                        $isRunnning = $true
-                        
+
+                    $vmStatus = Get-AzureRmVM -ResourceGroupName $vm.ResourceGroupName -Status -Name $vm.Name
+
+                    foreach($status in $vmStatus.Statuses){
+                        if ($status.Code -eq "PowerState/running"){
+                            $isRunnning = $true
+                            break
+                        }
+                    }
+
+                    if ($isRunnning){
                         $result = $null
                         $evt = $null
                         $retry=1
-                        
-                        while(-not $result -or -not $result.Status -eq "Succeeded"){
-                            
+
+                        while(-not $result -or -not $result.Status -eq "Succeeded"){    
+
                             try{
                                 Write-Host "Try " $retry ": Getting information disks information for the VM" -ForegroundColor Yellow
 
@@ -565,44 +574,47 @@ param (
                         $property.Add("osDisk_size_tier",$this.tierStorageSize($disk.Sku.Tier,$disk.DiskSizeGB))
                         $property.Add("osDisk_offer_name",$this.tierStorageOffer($disk.Sku.Tier,$disk.DiskSizeGB))
                         
-                        $disksList = $this.Correlate($disk, $windowsVmDisks, $linuxVmDisks, $true)
-            
-                        if ($disksList){
-
-                            $vol = 1
-                            foreach($vmdatadisk in $disksList){
-                                if ($disksList.Count -gt 1){
-                                    $prefix = "osDisk_vm_volume_"+$vol
-                                }else{
-                                    $prefix = "osDisk_vm"
-                                }
-                                $property.Add($prefix+"_driveletter",$vmdatadisk["OSDiskDriveLetter"])
-                                $property.Add($prefix+"_size",$vmdatadisk["OSDiskDiskSize"])
-                                $property.Add($prefix+"_partition",$vmdatadisk["OSDiskPartition"])
-                                $property.Add($prefix+"_lun",$vmdatadisk["OSDiskLun"])
-                                $property.Add($prefix+"_partition_size",$vmdatadisk["OSDiskRawSize"])
-                                $property.Add($prefix+"_volume_name",$vmdatadisk["OSDiskVolumeName"])
-                                $property.Add($prefix+"_volume_size",$vmdatadisk["OSDiskVolumeSize"])
-                                $property.Add($prefix+"_volume_freespace",$vmdatadisk["OSDiskVolumeFreeSpace"])
-                                $vol = $vol + 1
-                            }
-                        }
+                        $disksList = $this.Correlate($disk, $windowsVmDisks, $linuxVmDisks, $true, $true)
                     }else{
                         $property.Add("osDisk_disk_type","Unmanaged")
                         $property.Add("osDisk_size_allocated",$vm.StorageProfile.OsDisk.DiskSizeGB)
                         $property.Add("osDisk_vhd",$vm.StorageProfile.OsDisk.Vhd.Uri.ToString())
+                        
+                        $disksList = $this.Correlate($null, $windowsVmDisks, $linuxVmDisks, $true, $true)
                     }
+
+                    if ($disksList){
+
+                        $vol = 1
+                        foreach($vmdatadisk in $disksList){
+                            if ($disksList.Count -gt 1){
+                                $prefix = "osDisk_vm_volume_"+$vol
+                            }else{
+                                $prefix = "osDisk_vm"
+                            }
+                            $property.Add($prefix+"_driveletter",$vmdatadisk["OSDiskDriveLetter"])
+                            $property.Add($prefix+"_size",$vmdatadisk["OSDiskDiskSize"])
+                            $property.Add($prefix+"_partition",$vmdatadisk["OSDiskPartition"])
+                            $property.Add($prefix+"_lun",$vmdatadisk["OSDiskLun"])
+                            $property.Add($prefix+"_partition_size",$vmdatadisk["OSDiskRawSize"])
+                            $property.Add($prefix+"_volume_name",$vmdatadisk["OSDiskVolumeName"])
+                            $property.Add($prefix+"_volume_size",$vmdatadisk["OSDiskVolumeSize"])
+                            $property.Add($prefix+"_volume_freespace",$vmdatadisk["OSDiskVolumeFreeSpace"])
+                            $vol = $vol + 1
+                        }
+                    }
+                    
             
                     $i = 0
                     foreach($dataDisk in $vm.StorageProfile.DataDisks){
             
                         Write-Host $sub.Name - $vm.ResourceGroupName - $vm.Name - $i - id $dataDisk.ManagedDisk.Id  -ForegroundColor Green
                         
-                        $disksList = $this.Correlate($dataDisk, $windowsVmDisks, $linuxVmDisks, $false)
+                        $disksList = $this.Correlate($dataDisk, $windowsVmDisks, $linuxVmDisks, $false, $false)
             
                         $data_disk_type = "Standard_HDD"
 
-                        if ($disks.count -gt 0 -and $disks.ContainsKey($dataDisk.ManagedDisk.Id)){
+                        if ($dataDisk.ManagedDisk -and $disks.count -gt 0 -and $disks.ContainsKey($dataDisk.ManagedDisk.Id)){
                             $disk = ($disks[$dataDisk.ManagedDisk.Id] | ConvertFrom-Json )
                 
                             if ($disk.Sku){
@@ -628,6 +640,12 @@ param (
                                     $property.Add("datadisk"+$i+"_OSDiskSize",$disksList[0]["OSDiskDiskSize"])
                                 }
                             }
+                        }else{
+                            $property.Add("datadisk"+$i+"_lun",$dataDisk.Lun)
+                            $property.Add("datadisk"+$i+"_name",$dataDisk.Name)
+                            $property.Add("datadisk"+$i+"_id",$dataDisk.Vhd.Uri.ToString())
+                            $property.Add("datadisk"+$i+"_type","Unmanaged Disk")
+                            $property.Add("datadisk"+$i+"_size_allocated",$dataDisk.DiskSizeGB)
                         }
 
                         $vol = 1
